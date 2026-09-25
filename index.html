@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DeCo-SLAM — Decoupling Reconstruction from Connectivity</title>
+<meta name="description" content="DeCo-SLAM: online dense monocular SLAM driven by feed-forward 3D models. Disjoint keyframe groups, explicit inter-group geometry, no shared anchor frames." />
+<link rel="stylesheet" href="assets/css/site.css" />
+</head>
+<body>
+
+<!-- ===================== 导航 ===================== -->
+<nav class="nav">
+  <div class="nav-inner">
+<!--    <div class="nav-logo">-->
+<!--      <span class="dot"></span>-->
+<!--      DeCo-SLAM-->
+<!--    </div>-->
+    <div class="nav-links">
+      <a href="#overview">Overview</a>
+      <a href="#viewer">Reconstruction</a>
+      <a href="#results">Results</a>
+      <a href="#conclusion">Conclusion</a>
+    </div>
+  </div>
+</nav>
+
+<!-- CONTENT: title, authors, affiliations and paper/code links. -->
+<!-- ===================== Hero ===================== -->
+<header class="hero">
+  <div class="hero-inner">
+<!--    <div class="hero-tag">-->
+<!--      <span class="pulse"></span>-->
+<!--      Preprint · 2025-->
+<!--    </div>-->
+
+    <h1 class="title">
+      <span>DeCo-SLAM</span><br />
+      Decoupling Reconstruction from Connectivity for Dense Monocular SLAM Driven by Feed-Forward 3D Model
+    </h1>
+
+    <p class="hero-sub">
+      An online dense monocular SLAM framework driven by feed-forward 3D models. Disjoint keyframe groups are
+      reconstructed independently and aligned through explicit geometric constraints — no shared anchor frames.
+    </p>
+
+    <div class="authors">
+      <a href="#">Baosheng Zhang</a><sup>1</sup><span class="sep">,</span>
+      <a href="#">Lin Zhang</a><sup>1</sup><span class="sep">,</span>
+      <a href="#">Ying Shen</a><sup>1</sup><span class="sep">,</span>
+      <a href="#">Shengjie Zhao</a><sup>1</sup><span class="sep">,</span>
+      <a href="#">Yicong Zhou</a><sup>2</sup>
+    </div>
+    <div class="affil">
+      1. Tongji University, Shanghai, China &emsp;
+      2. University of Macau, Macau, China
+    </div>
+
+    <div class="hero-links">
+      <a class="btn btn-primary" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        Paper (PDF)
+      </a>
+      <a class="btn btn-ghost" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>
+        Code
+      </a>
+      <a class="btn btn-ghost" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+        Data
+      </a>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ===================== 摘要 ===================== -->
+  <section id="abstract">
+    <div class="abstract">
+      <p>
+        Dense monocular SLAM over long trajectories remains challenged by redundant computation and cumulative
+        pose-scale drift. Although recent feed-forward 3D foundation models provide strong geometric priors, many
+        reconstruction-driven systems rely on shared anchor frames or overlapping submaps to connect local
+        reconstructions — increasing overhead and limiting keyframe scheduling flexibility.
+      </p>
+      <p>
+        We propose <strong>DeCo-SLAM</strong>, which decouples local reconstruction from inter-group geometric
+        connectivity. A unified superpixel-guided frontend handles adaptive keyframe selection and loop-candidate
+        retrieval; selected keyframes are partitioned into disjoint groups and reconstructed independently. Feed-forward
+        predictions are converted into explicit inter-group constraints to align these reconstructions
+        without shared anchor frames. Loop candidates pass two-stage geometric verification, and a compact
+        keyframe-level factor graph jointly optimizes camera poses and logarithmic scale factors.
+      </p>
+
+      <div class="keywords">
+        <span class="kw">Monocular SLAM</span>
+        <span class="kw">Feed-forward 3D reconstruction</span>
+        <span class="kw">Keyframe scheduling</span>
+        <span class="kw">Loop closure</span>
+        <span class="kw">Pose–scale optimization</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== Overview ===================== -->
+  <section id="overview">
+    <div class="sec-label">Overview</div>
+    <h2>Pipeline overview</h2>
+    <p>
+      DeCo-SLAM decouples local reconstruction from inter-group geometric connectivity. The pipeline combines keyframe
+      selection and loop retrieval in a unified frontend, independent reconstruction of disjoint groups, and global
+      pose–scale optimization with explicit geometric constraints. Expand the cards below to see each stage's equations and design details.
+    </p>
+
+    <div class="overview-figure">
+      <img src="OV.png" alt="DeCo-SLAM pipeline overview diagram" />
+
+      <p class="overview-caption">
+        <b>Figure 2.</b> (a) Uncalibrated monocular video input. (b) A unified superpixel frontend performs image-quality
+        filtering, adaptive keyframe selection, and group-level loop-candidate retrieval. (c) Selected keyframes are
+        partitioned into disjoint groups, where a feed-forward geometry model independently predicts depth, confidence,
+        intrinsics, and poses. (d) Hybrid dual-track point-to-plane associations turn inter-group predictions into explicit
+        geometric constraints. (e) A keyframe-level factor graph jointly optimizes camera poses and log-scale factors,
+        producing a globally consistent trajectory and dense map.
+      </p>
+    </div>
+
+    <div class="overview-stages" id="stageCards">
+
+      <div class="ostage" data-stage="a">
+        <button class="ostage-head" type="button" aria-expanded="false">
+          <span class="ostage-head-main">
+            <span class="ol">(A) INPUT</span>
+            <span class="ostage-title">Monocular video</span>
+            <span class="ostage-summary">Long RGB sequences without camera intrinsics.</span>
+          </span>
+          <span class="ostage-toggle" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </span>
+        </button>
+        <div class="ostage-body">
+          <div class="ostage-body-inner">
+            <div class="ostage-detail">
+              <p>
+                The input is monocular video captured by a handheld or aerial camera, with no camera intrinsics and possible
+                lens distortion, motion blur, and abrupt viewpoint changes. Running a feed-forward 3D model directly on a
+                long sequence accumulates pose and scale errors, causing trajectory drift and structural breaks in later frames.
+              </p>
+              <p>DeCo-SLAM therefore assumes no camera parameters or external pose priors; all geometry is predicted from the images.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ostage" data-stage="a">
+        <button class="ostage-head" type="button" aria-expanded="false">
+          <span class="ostage-head-main">
+            <span class="ol">(B) FRONTEND</span>
+            <span class="ostage-title">Unified frontend</span>
+            <span class="ostage-summary">A shared superpixel-grid similarity representation drives keyframe selection and loop-candidate retrieval.</span>
+          </span>
+          <span class="ostage-toggle" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </span>
+        </button>
+        <div class="ostage-body">
+          <div class="ostage-body-inner">
+            <div class="ostage-detail">
+              <p>
+                Sharing one appearance representation is central to the design: keyframe selection measures change from the
+                latest keyframe, while loop retrieval compares the current observation with historical frames. Both use the
+                same superpixel histograms, avoiding two separate feature sets.
+              </p>
+
+              <div class="eq-item">
+                <div class="eq-name">Superpixel distance (assigning pixels to region centers)</div>
+                <div class="eq">
+                  D(p<sub>i</sub>,c<sub>k</sub>) = √( (I(p<sub>i</sub>) − I(c<sub>k</sub>))² / (τσ²) + ‖p<sub>i</sub> − c<sub>k</sub>‖² / (τσ²) )
+                  <span class="tag">(2)</span>
+                </div>
+              </div>
+
+              <div class="eq-item">
+                <div class="eq-name">Region sharpness (for image-quality filtering)</div>
+                <div class="eq">
+                  s<sub>k</sub> = (1/|Ω<sub>k</sub>|) Σ<sub>p∈Ω<sub>k</sub></sub> ‖∇I(p)‖₂
+                  <span class="tag">(3)</span>
+                </div>
+              </div>
+
+              <div class="eq-item">
+                <div class="eq-name">Adaptive similarity threshold</div>
+                <div class="eq">
+                  τ<sub>a</sub> = μ<sup>W</sup> − α · std(W)
+                  <span class="tag">(4)</span>
+                </div>
+              </div>
+
+              <p>
+                After quality filtering, a frame is selected as a new keyframe when its similarity to the latest keyframe falls
+                below <em>τ<sub>a</sub></em>. The threshold adapts to recent similarity statistics, avoiding the limitations
+                of a fixed threshold across different motions and scenes.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ostage" data-stage="c">
+        <button class="ostage-head" type="button" aria-expanded="false">
+          <span class="ostage-head-main">
+            <span class="ol">(C) GROUPS</span>
+            <span class="ostage-title">Disjoint reconstruction</span>
+            <span class="ostage-summary">Keyframes are divided into disjoint temporal groups, each reconstructed independently.</span>
+          </span>
+          <span class="ostage-toggle" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </span>
+        </button>
+        <div class="ostage-body">
+          <div class="ostage-body-inner">
+            <div class="ostage-detail">
+              <p>
+                Adjacent groups share no keyframes. Groups share <em>scene regions</em>, rather than <em>frames</em>;
+                these co-visible regions provide geometric correspondences for recovering relative pose and scale.
+              </p>
+
+              <div class="eq-item">
+                <div class="eq-name">Grouping constraint: each keyframe belongs to one group</div>
+                <div class="eq">
+                  G<sub>m</sub> ∩ G<sub>m+1</sub> = ∅ ,&nbsp;&nbsp; 1 ≤ m &lt; M
+                  <span class="tag">(1)</span>
+                </div>
+              </div>
+
+              <div class="eq-item">
+                <div class="eq-name">Feed-forward geometry output for each group</div>
+                <div class="eq">
+                  O(G<sub>m</sub>) = {T<sub>n</sub><sup>m</sup>, DI<sub>n</sub><sup>m</sup>, CI<sub>n</sub><sup>m</sup>, K<sub>n</sub><sup>m</sup>}<sub>n=1..N<sub>m</sub></sub>
+                  <span class="tag">(7)</span>
+                </div>
+              </div>
+
+              <p>This design avoids redundant inference on shared anchor frames: each keyframe is processed by the feed-forward model only once.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ostage" data-stage="d">
+        <button class="ostage-head" type="button" aria-expanded="false">
+          <span class="ostage-head-main">
+            <span class="ol">(D) LINKING</span>
+            <span class="ostage-title">Explicit constraints</span>
+            <span class="ostage-summary">Dual-track point-to-plane associations connect groups without shared frames.</span>
+          </span>
+          <span class="ostage-toggle" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </span>
+        </button>
+        <div class="ostage-body">
+          <div class="ostage-body-inner">
+            <div class="ostage-detail">
+              <p>
+                Two complementary association paths are used: <strong>projective association</strong> handles within-group
+                constraints by extracting plane parameters from image neighborhoods; <strong>local-fit association</strong>
+                handles inter-group boundaries by fitting target planes from neighboring point clouds with a KD-tree and PCA,
+                since projective association becomes unreliable when groups have inconsistent pose and scale.
+              </p>
+
+              <div class="eq-item">
+                <div class="eq-name">Plane parameters from image neighborhoods</div>
+                <div class="eq">
+                  v<sub>x</sub> = P<sub>r</sub> − P<sub>l</sub> ,&nbsp; v<sub>y</sub> = P<sub>d</sub> − P<sub>u</sub><br />
+                  n<sub>i</sub> = (v<sub>x</sub> × v<sub>y</sub>) / ‖v<sub>x</sub> × v<sub>y</sub>‖₂ ,&nbsp;
+                  d<sub>i</sub> = −n<sub>i</sub><sup>⊤</sup>P<sub>i</sub>
+                  <span class="tag">(9)</span>
+                </div>
+              </div>
+
+              <div class="eq-item">
+                <div class="eq-name">Point-to-plane geometric residual</div>
+                <div class="eq">
+                  R<sub>geom,i</sub>(χ<sub>s</sub>) = | n<sub>g</sub><sup>⊤</sup> P<sub>g</sub> + d<sub>g</sub> |
+                  <span class="tag">(13)</span>
+                </div>
+              </div>
+
+              <div class="eq-item">
+                <div class="eq-name">Correspondence weight (smoothness + depth confidence)</div>
+                <div class="eq">
+                  w<sub>i</sub> = λ(−ln κ<sub>i</sub>) · exp(I<sub>i</sub><sup>C</sup>)
+                  <span class="tag">(14)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ostage" data-stage="e">
+        <button class="ostage-head" type="button" aria-expanded="false">
+          <span class="ostage-head-main">
+            <span class="ol">(E) BACKEND</span>
+            <span class="ostage-title">Global optimization</span>
+            <span class="ostage-summary">A factor graph combines intra-group, inter-group, and verified loop constraints to jointly optimize pose and log scale.</span>
+          </span>
+          <span class="ostage-toggle" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </span>
+        </button>
+        <div class="ostage-body">
+          <div class="ostage-body-inner">
+            <div class="ostage-detail">
+              <p>
+                Loop candidates undergo two-stage geometric verification. Coarse screening ranks them by projective overlap;
+                fine alignment jointly optimizes relative pose and scale with weighted point-to-plane residuals. The inlier
+                ratio and information-matrix determinant determine acceptance. Verified edges enter the global factor graph.
+              </p>
+
+              <div class="eq-item">
+                <div class="eq-name">Loop acceptance conditions</div>
+                <div class="eq">
+                  L<sub>ref</sub> &gt; τ<sub>loop</sub> &nbsp; and &nbsp; ln det(Λ<sub>vu</sub>) &gt; τ<sub>info</sub>
+                  <span class="tag">(21)</span>
+                </div>
+              </div>
+
+              <div class="eq-item">
+                <div class="eq-name">Global factor-graph objective (intra-group + inter-group + loop + scale regularization)</div>
+                <div class="eq">
+                  X<sub>g</sub>* = argmin { Σ<sub>E<sub>intra</sub></sub>R + Σ<sub>E<sub>inter</sub></sub>R + Σ<sub>E<sub>loop</sub></sub>R + Σ R<sub>scale</sub> }
+                  <span class="tag">(22)</span>
+                </div>
+              </div>
+
+              <div class="eq-item">
+                <div class="eq-name">Scale regularization term</div>
+                <div class="eq">
+                  R<sub>scale</sub>(σ<sub>i</sub><sup>j</sup>) = w<sub>scale</sub>(σ<sub>i</sub><sup>j</sup> − σ̄<sub>i</sub><sup>j</sup>)²
+                  <span class="tag">(26)</span>
+                </div>
+              </div>
+
+              <p>After optimization, each local point is transformed into global coordinates using the optimized rotation, translation, and scale, yielding a consistent trajectory and dense map.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== 交互查看器 ===================== -->
+  <section id="viewer">
+    <div class="sec-label">Reconstruction</div>
+    <h2 id="viewerTitle">Reconstruction</h2>
+    <p id="viewerDescription"></p>
+
+    <div class="viewer-shell">
+
+      <div class="viewer-head">
+        <div class="viewer-head-label">Source sequence</div>
+        <!-- Tabs are generated from config/scenes.js; do not add buttons manually. -->
+        <div class="scene-tabs" id="sceneTabs" aria-label="Point cloud scenes"></div>
+      </div>
+
+      <div class="viewer-body">
+
+        <div class="viewer-stage" id="viewerStage">
+          <canvas id="pcCanvas"></canvas>
+          <div id="plyStatus" class="viewer-status" role="status" aria-live="polite"></div>
+
+          <div class="viewer-overlay-tl">
+            <div class="viewer-scene-name" id="sceneName"></div>
+            <div class="viewer-scene-sub" id="sceneSub"></div>
+          </div>
+
+          <div class="viewer-overlay-tr">
+            <div class="viewer-count"><b id="ptCount">0</b> points rendered</div>
+          </div>
+
+          <div class="viewer-hint" id="viewerHint">
+            <span class="key">Drag</span> to rotate
+            <span class="key">Scroll</span> to zoom
+          </div>
+
+          <button class="viewer-reset" id="viewerReset" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>
+            </svg>
+            Reset view
+          </button>
+        </div>
+
+        <aside class="viewer-side">
+
+          <!-- Video source and playback options come from the selected scene. -->
+          <video id="sceneVideo" class="scene-video" controls playsinline preload="metadata" hidden></video>
+          <p id="videoStatus" class="video-status" role="status" hidden></p>
+          <div class="video-wrap">
+            <canvas id="videoCanvas"></canvas>
+            <div class="video-scanlines"></div>
+
+            <div class="video-overlay-tl">
+              <span class="rec-dot"></span> REC
+            </div>
+            <div class="video-overlay-tr" id="videoTC">00:00</div>
+            <div class="video-overlay-bl" id="videoSceneLabel">Aerial · 1080p</div>
+          </div>
+
+          <div class="video-bar">
+            <button class="video-play" id="videoPlayBtn" aria-label="Play / Pause" type="button">
+              <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+              <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <div class="video-track" id="videoTrack">
+              <div class="video-fill" id="videoFill"></div>
+            </div>
+            <span class="video-time" id="videoTime">00:00 / 00:12</span>
+          </div>
+
+          <div class="side-meta" id="sceneMetadata"></div>
+
+        </aside>
+
+      </div>
+
+      <!-- Paper-level summary metrics: edit these values with your results, not per scene. -->
+      <div class="viewer-foot">
+        <div class="vf-item">
+          <div class="vf-k">Rendered points</div>
+          <div class="vf-v" id="ptCountFoot">0</div>
+        </div>
+        <div class="vf-item">
+          <div class="vf-k">Avg. runtime</div>
+          <div class="vf-v">63.19<span class="u">ms/frame</span></div>
+        </div>
+        <div class="vf-item">
+          <div class="vf-k">Peak GPU memory</div>
+          <div class="vf-v">16.70<span class="u">GB</span></div>
+        </div>
+        <div class="vf-item">
+          <div class="vf-k">KITTI rot. error</div>
+          <div class="vf-v accent">0.089<span class="u">rad</span></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== 结果 ===================== -->
+  <section id="results">
+    <div class="sec-label">Results</div>
+    <h2>Selected results</h2>
+
+    <div class="results-grid">
+      <div class="metric-card">
+        <div class="metric-label">KITTI average rotation error</div>
+        <div class="metric-value">0.089<span class="unit">rad</span></div>
+        <div class="metric-note">↓ 30.4% vs. VGGT-Long</div>
+      </div>
+      <div class="metric-card violet">
+        <div class="metric-label">KITTI average translation error</div>
+        <div class="metric-value">17.94<span class="unit">m</span></div>
+        <div class="metric-note">↓ 48.4% vs. VGGT-Long</div>
+      </div>
+      <div class="metric-card mint">
+        <div class="metric-label">ICL-NUIM mean accuracy</div>
+        <div class="metric-value">6.42<span class="unit">cm</span></div>
+        <div class="metric-note">↓ 28.7% vs. MASt3R-SLAM</div>
+      </div>
+      <div class="metric-card amber">
+        <div class="metric-label">ICL-NUIM mean completeness</div>
+        <div class="metric-value">6.58<span class="unit">cm</span></div>
+        <div class="metric-note">↓ 34.0% vs. MASt3R-SLAM</div>
+      </div>
+    </div>
+
+    <div class="mini-table-wrap">
+      <table class="mini">
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th class="num">KITTI rot ↓</th>
+            <th class="num">KITTI trans ↓</th>
+            <th class="num">ICL Acc ↓</th>
+            <th class="num">ICL Comp ↓</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>SLAM3R</td>
+            <td class="num">0.984</td>
+            <td class="num">199.71</td>
+            <td class="num">13.31</td>
+            <td class="num">26.13</td>
+          </tr>
+          <tr>
+            <td>VGGT-Long</td>
+            <td class="num">0.128</td>
+            <td class="num">34.75</td>
+            <td class="num">9.93</td>
+            <td class="num">12.63</td>
+          </tr>
+          <tr>
+            <td>MASt3R-SLAM</td>
+            <td class="num">—</td>
+            <td class="num">—</td>
+            <td class="num">9.00</td>
+            <td class="num">9.97</td>
+          </tr>
+          <tr class="ours">
+            <td>Ours (DA3)</td>
+            <td class="num best">0.089</td>
+            <td class="num best">17.94</td>
+            <td class="num best">6.42</td>
+            <td class="num best">6.58</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="table-note">
+      Average results on KITTI and ICL-NUIM. DeCo-SLAM (DA3) achieves the best scores on all four metrics; MASt3R-SLAM did not complete the full KITTI sequence evaluation.
+    </p>
+  </section>
+
+  <!-- ===================== 结论 ===================== -->
+  <section id="conclusion">
+    <div class="sec-label">Conclusion</div>
+    <h2>Conclusion</h2>
+
+    <div class="conclusion">
+      <p>
+        DeCo-SLAM decouples local reconstruction from inter-group geometric connectivity. Selected keyframes are reconstructed independently in disjoint groups, then aligned in pose and scale through explicit point-to-plane constraints without shared anchor frames. A unified frontend supports both keyframe selection and loop-candidate retrieval, while a keyframe-level factor graph jointly optimizes camera poses and log-scale factors.
+      </p>
+      <p>
+        Experiments on TUM RGB-D, KITTI, and ICL-NUIM show improvements in trajectory accuracy and dense reconstruction quality. The framework works with both DA3 and VGGT, demonstrating compatibility with different feed-forward geometry models.
+      </p>
+      <p style="margin-bottom:0">
+        <strong>Future work</strong> will explore motion-aware geometric association in dynamic scenes and more efficient geometry inference and global optimization to reduce compute and memory costs.
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<!-- ===================== 页脚 ===================== -->
+<footer>
+  <div class="footer-inner">
+    <div>
+      <h6>About</h6>
+      <p>DeCo-SLAM: Decoupling Reconstruction from Connectivity for Dense Monocular SLAM Driven by Feed-Forward 3D Model.</p>
+      <p>Code and data: <a href="#">GITHUB/XXX</a></p>
+    </div>
+    <div>
+      <h6>Affiliations</h6>
+      <p>Tongji University, Shanghai, China</p>
+      <p>University of Macau, Macau, China</p>
+    </div>
+    <div>
+      <h6>Authors</h6>
+      <p>Baosheng Zhang · Lin Zhang · Ying Shen · Shengjie Zhao · Yicong Zhou</p>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2025 DeCo-SLAM authors.</span>
+    <span>Pipeline overview + interactive reconstruction viewer</span>
+  </div>
+</footer>
+
+<button id="toTop" aria-label="Back to top" type="button">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+</button>
+
+<!-- Content configuration first; rendering code normally needs no edits. -->
+<script src="config/scenes.js" defer></script>
+<script src="assets/js/page.js" defer></script>
+<script src="assets/js/demo-scenes.js" defer></script>
+<script src="assets/js/viewer.js" defer></script>
+
+</body>
+</html>
