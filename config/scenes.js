@@ -22,7 +22,7 @@ window.VIEWER_CONFIG = {
       title: 'Room 85',
       description: 'RGB point cloud',
       color: '#22d3ee',
-      pointCloud: 'room-85.ply', // 替换此处：二进制 PLY 文件路径。
+      pointCloud: 'https://huggingface.co/datasets/ZhangBaosheng-TJ/DeCo-SLAM/resolve/main/room-85-web-sampled.ply', // 替换此处：二进制 PLY 文件路径。
       video: 'room-85.mp4',     // 替换此处：视频文件路径；无视频填空字符串。
       poster: '',              // 可选：视频封面图片路径。
       maxPoints: 20000000,     // 保留目前为 Room 85 设置的点数上限。
